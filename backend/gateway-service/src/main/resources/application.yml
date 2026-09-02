@@ -1,0 +1,130 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: gateway-service
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+  cloud:
+    gateway:
+      routes:
+        # REST calls to join / poll the virtual waiting room
+        - id: queue-service
+          uri: ${QUEUE_SERVICE_URL:http://localhost:8081}
+          predicates:
+            - Path=/api/queue/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 20
+                redis-rate-limiter.burstCapacity: 40
+                key-resolver: "#{@ipKeyResolver}"
+
+        # Live queue position updates over WebSocket/SockJS
+        - id: queue-websocket
+          uri: ${QUEUE_SERVICE_WS_URL:ws://localhost:8081}
+          predicates:
+            - Path=/ws/**
+
+        # Result lookups, once a user has been admitted from the queue
+        - id: result-service
+          uri: ${RESULT_SERVICE_URL:http://localhost:8082}
+          predicates:
+            - Path=/api/results/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 15
+                redis-rate-limiter.burstCapacity: 30
+                key-resolver: "#{@ipKeyResolver}"
+
+        # Grievance ticketing (raise/track) — lives in result-service,
+        # alongside the results data it references.
+        - id: grievance-service
+          uri: ${RESULT_SERVICE_URL:http://localhost:8082}
+          predicates:
+            - Path=/api/grievances/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 10
+                redis-rate-limiter.burstCapacity: 20
+                key-resolver: "#{@ipKeyResolver}"
+
+        # Admit card / hall ticket PDF — same ticket gate as result lookup.
+        - id: admit-card
+          uri: ${RESULT_SERVICE_URL:http://localhost:8082}
+          predicates:
+            - Path=/api/admit-card/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 15
+                redis-rate-limiter.burstCapacity: 30
+                key-resolver: "#{@ipKeyResolver}"
+
+        # Application status timeline — public reads, admin-gated advance.
+        - id: application-status
+          uri: ${RESULT_SERVICE_URL:http://localhost:8082}
+          predicates:
+            - Path=/api/applications/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 15
+                redis-rate-limiter.burstCapacity: 30
+                key-resolver: "#{@ipKeyResolver}"
+
+        # Admin console — gated separately by X-Admin-Key at the service
+        # itself (AdminAuthInterceptor), but still rate-limited here so a
+        # leaked/guessed key can't be used to hammer the service.
+        - id: queue-admin
+          uri: ${QUEUE_SERVICE_URL:http://localhost:8081}
+          predicates:
+            - Path=/api/admin/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 5
+                redis-rate-limiter.burstCapacity: 10
+                key-resolver: "#{@ipKeyResolver}"
+
+        # Partner/institutional bulk API — gated by X-Partner-Key at the
+        # service itself (PartnerAuthInterceptor). Rate-limited more
+        # loosely than the admin surface (legitimate bulk calls are
+        # expected) but still bounded.
+        - id: partner-api
+          uri: ${RESULT_SERVICE_URL:http://localhost:8082}
+          predicates:
+            - Path=/api/partner/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 10
+                redis-rate-limiter.burstCapacity: 20
+                key-resolver: "#{@ipKeyResolver}"
+
+        # Public status page — deliberately NOT rate limited, so users can
+        # always see system health even during a total overload.
+        - id: status
+          uri: ${QUEUE_SERVICE_URL:http://localhost:8081}
+          predicates:
+            - Path=/api/status/**
+
+# CORS allowlist — must match wherever the frontend is actually served
+# from. Comma-separated for multiple environments.
+security:
+  allowed-origins: ${ALLOWED_ORIGINS:http://localhost:3000}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always

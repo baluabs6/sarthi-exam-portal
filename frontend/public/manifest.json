@@ -1,0 +1,10 @@
+{
+  "name": "Sarthi Portal",
+  "short_name": "Sarthi",
+  "description": "National Result & Application Gateway — live queue, results, and grievance tracking.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a1218",
+  "theme_color": "#0a1218",
+  "icons": []
+}

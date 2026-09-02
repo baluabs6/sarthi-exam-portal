@@ -1,0 +1,189 @@
+version: "3.9"
+
+# ---------------------------------------------------------------------------
+# Sarthi Portal — full local stack
+#
+#   docker compose up --build
+#
+# Frontend:        http://localhost:3000
+# Gateway (API):   http://localhost:8080
+# RabbitMQ console: http://localhost:15672  (guest/guest)
+#
+# Bring the whole thing down (and wipe data volumes) with:
+#   docker compose down -v
+# ---------------------------------------------------------------------------
+
+services:
+
+  # ---- Data stores -----------------------------------------------------
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: sarthi_results
+      POSTGRES_USER: sarthi
+      POSTGRES_PASSWORD: sarthi_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sarthi -d sarthi_results"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  mongodb:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    ports:
+      - "5672:5672"   # AMQP
+      - "15672:15672" # management UI
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ---- Application services ---------------------------------------------
+
+  gateway-service:
+    build:
+      context: ./backend
+      dockerfile: gateway-service/Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      QUEUE_SERVICE_URL: http://queue-service:8081
+      QUEUE_SERVICE_WS_URL: ws://queue-service:8081
+      RESULT_SERVICE_URL: http://result-service:8082
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
+    depends_on:
+      redis:
+        condition: service_healthy
+      queue-service:
+        condition: service_started
+      result-service:
+        condition: service_started
+
+  queue-service:
+    build:
+      context: ./backend
+      dockerfile: queue-service/Dockerfile
+    ports:
+      - "8081:8081"
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      MONGODB_URI: mongodb://mongodb:27017/sarthi_audit
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: guest
+      RABBITMQ_PASSWORD: guest
+      QUEUE_ADMIT_PER_TICK: 5
+      QUEUE_TICK_INTERVAL_SECONDS: 2
+      # Must be identical to result-service's TICKET_SIGNING_SECRET below.
+      # Override this in a real deployment — see .env.example.
+      TICKET_SIGNING_SECRET: ${TICKET_SIGNING_SECRET:-dev-only-insecure-secret-change-me-before-deploying}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
+      # Gates /api/admin/** — see .env.example.
+      ADMIN_API_KEY: ${ADMIN_API_KEY:-dev-only-insecure-admin-key-change-me}
+    depends_on:
+      redis:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  result-service:
+    build:
+      context: ./backend
+      dockerfile: result-service/Dockerfile
+    ports:
+      - "8082:8082"
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: sarthi_results
+      POSTGRES_USER: sarthi
+      POSTGRES_PASSWORD: sarthi_pass
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: guest
+      RABBITMQ_PASSWORD: guest
+      # Must be identical to queue-service's TICKET_SIGNING_SECRET above.
+      TICKET_SIGNING_SECRET: ${TICKET_SIGNING_SECRET:-dev-only-insecure-secret-change-me-before-deploying}
+      # Gates /api/grievances/admin/** — see .env.example.
+      ADMIN_API_KEY: ${ADMIN_API_KEY:-dev-only-insecure-admin-key-change-me}
+      # Encrypts roll numbers / grievance text at rest — see .env.example.
+      PII_ENCRYPTION_KEY: ${PII_ENCRYPTION_KEY:-dev-only-insecure-pii-key-change-me-before-deploying}
+      # Optional real per-account admin roles — see .env.example.
+      ADMIN_ACCOUNTS_JSON: ${ADMIN_ACCOUNTS_JSON:-}
+      # Optional partner/institutional bulk API — disabled if blank.
+      PARTNER_API_KEY: ${PARTNER_API_KEY:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  notification-service:
+    build:
+      context: ./backend
+      dockerfile: notification-service/Dockerfile
+    ports:
+      - "8083:8083"
+    environment:
+      MONGODB_URI: mongodb://mongodb:27017/sarthi_notifications
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: guest
+      RABBITMQ_PASSWORD: guest
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+    ports:
+      - "3000:8080"
+    depends_on:
+      - gateway-service
+
+volumes:
+  postgres_data:
+  redis_data:
+  mongo_data:

@@ -1,0 +1,88 @@
+server:
+  port: 8082
+
+spring:
+  application:
+    name: result-service
+
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DB:sarthi_results}
+    username: ${POSTGRES_USER:sarthi}
+    password: ${POSTGRES_PASSWORD:sarthi_pass}
+    hikari:
+      # Bounded pool: this is the other half of the throttle — even if
+      # queue-service somehow let too much through, the connection pool
+      # caps how much can actually hit Postgres concurrently.
+      maximum-pool-size: 20
+      connection-timeout: 3000
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          batch_size: 20
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+  cache:
+    type: redis
+    redis:
+      time-to-live: 600000 # 10 minutes
+
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+
+# Must be byte-for-byte identical to queue-service's ticket.signing-secret,
+# or every admission ticket will fail verification here. Always override
+# via TICKET_SIGNING_SECRET in real deployments.
+ticket:
+  signing-secret: ${TICKET_SIGNING_SECRET:dev-only-insecure-secret-change-me-before-deploying}
+
+# Shared admin key gating /api/grievances/admin/** — see AdminAuthInterceptor.
+# For real per-account roles, set ADMIN_ACCOUNTS_JSON instead — e.g.
+# '[{"key":"...","name":"Priya (Ops)","role":"SUPER_ADMIN"},
+#   {"key":"...","name":"Raj (Auditor)","role":"AUDITOR"}]'
+# Valid roles: SUPER_ADMIN (full access), QUEUE_OPERATOR (view + tune
+# admission rate only, no grievance writes), AUDITOR (read-only
+# everywhere). If unset, admin.api-key below is used as a single
+# SUPER_ADMIN account, for backward compatibility.
+admin:
+  api-key: ${ADMIN_API_KEY:dev-only-insecure-admin-key-change-me}
+  accounts-json: ${ADMIN_ACCOUNTS_JSON:}
+
+# Separate credential for the partner/institutional bulk API
+# (/api/partner/**) — completely distinct from admin.api-key and from
+# candidate admission tickets. Empty by default, which disables the
+# partner endpoints entirely (PartnerAuthInterceptor rejects everything
+# if this is blank) until a real partner is actually onboarded.
+partner:
+  api-key: ${PARTNER_API_KEY:}
+
+# How long resolved/rejected grievances and feedback are kept before
+# the nightly DataRetentionScheduler purges them. Open (RAISED /
+# UNDER_REVIEW) grievances are never auto-deleted regardless of age.
+retention:
+  grievance-days: ${GRIEVANCE_RETENTION_DAYS:365}
+  feedback-days: ${FEEDBACK_RETENTION_DAYS:180}
+  purge-cron: ${RETENTION_PURGE_CRON:0 30 3 * * *}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always
