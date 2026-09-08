@@ -9,6 +9,16 @@ spring:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
+      # Previously unsupported entirely — meaning this service could
+      # never actually authenticate against a real managed Redis that
+      # requires it (Azure Cache for Redis requires an access key by
+      # default; GCP Memorystore now requires one too, see
+      # infra/terraform/gcp/main.tf's auth_enabled fix). Blank/false by
+      # default so local dev against a bare `redis:7-alpine` container
+      # (docker-compose.yml) is unaffected.
+      password: ${REDIS_PASSWORD:}
+      ssl:
+        enabled: ${REDIS_SSL_ENABLED:false}
     mongodb:
       uri: ${MONGODB_URI:mongodb://localhost:27017/sarthi_audit}
 

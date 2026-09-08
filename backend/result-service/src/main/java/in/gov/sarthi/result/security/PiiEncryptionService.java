@@ -47,7 +47,27 @@ public final class PiiEncryptionService {
     private PiiEncryptionService() {}
 
     private static SecretKeySpec deriveKey() {
-        String rawKey = System.getenv().getOrDefault("PII_ENCRYPTION_KEY", "dev-only-insecure-pii-key-change-me-before-deploying");
+        String rawKey = System.getenv("PII_ENCRYPTION_KEY");
+        if (rawKey == null || rawKey.isBlank()) {
+            // SECURITY: this used to silently fall back to a hardcoded
+            // "dev-only-insecure..." default if the env var was missing
+            // or misspelled — meaning a production deployment with a
+            // typo'd variable name would encrypt everything with a key
+            // anyone could read in this source file, and nothing would
+            // ever fail loudly enough to notice. Failing closed here
+            // means a missing key breaks startup immediately and
+            // obviously instead of breaking confidentiality silently.
+            // The one narrow exception is local dev/CI, opted into
+            // explicitly (never by omission) via SARTHI_ALLOW_INSECURE_DEV_DEFAULTS.
+            if ("true".equals(System.getenv("SARTHI_ALLOW_INSECURE_DEV_DEFAULTS"))) {
+                rawKey = "dev-only-insecure-pii-key-change-me-before-deploying";
+            } else {
+                throw new IllegalStateException(
+                        "PII_ENCRYPTION_KEY is not set. Refusing to start with an implicit insecure default — "
+                        + "set PII_ENCRYPTION_KEY (see .env.example), or set "
+                        + "SARTHI_ALLOW_INSECURE_DEV_DEFAULTS=true if this is genuinely local dev/CI.");
+            }
+        }
         try {
             byte[] hashed = MessageDigest.getInstance("SHA-256").digest(rawKey.getBytes(StandardCharsets.UTF_8));
             return new SecretKeySpec(hashed, "AES");

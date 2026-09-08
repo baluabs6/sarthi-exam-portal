@@ -11,6 +11,28 @@ spring:
 
   cloud:
     gateway:
+      # SECURITY: X-Forwarded-For is read by every downstream service
+      # (queue-service's lockout tracker, result-service's CAPTCHA
+      # difficulty, assistant-service's rate limiter, audit logging) to
+      # identify the real client IP. The actual trust boundary is
+      # frontend/nginx.conf, the internet-facing edge — it now overwrites
+      # X-Forwarded-For with $remote_addr (its own unforgeable view of
+      # the connecting client) instead of blindly appending to whatever
+      # the client sent. Gateway sits BEHIND nginx in the normal request
+      # path, so it should trust and forward that already-correct value
+      # rather than discard it — Spring's default for-append behavior
+      # appends gateway's own hop (nginx's container IP) after it, and
+      # downstream code correctly reads the FIRST entry, which is the
+      # real client IP nginx recorded. (If a request skips nginx entirely
+      # by hitting gateway's port directly — see the docker-compose.yml
+      # comment on why that port is exposed only for local dev — this
+      # protection doesn't apply, which is exactly why that port must not
+      # be internet-facing in a real deployment; see infra/terraform,
+      # where only the frontend is ever the external origin.)
+      x-forwarded:
+        for-enabled: true
+        for-append: true
+
       routes:
         # REST calls to join / poll the virtual waiting room
         - id: queue-service
@@ -114,6 +136,23 @@ spring:
           uri: ${QUEUE_SERVICE_URL:http://localhost:8081}
           predicates:
             - Path=/api/status/**
+
+        # AI assistant (FAQ RAG chat + admin cluster labeling). Rate
+        # limited far tighter than everything else here — each request
+        # can trigger a real, metered call to an LLM provider, unlike
+        # every other route in this file. The service itself no-ops
+        # gracefully if ANTHROPIC_API_KEY isn't set, so this route is
+        # always safe to leave enabled.
+        - id: assistant-service
+          uri: ${ASSISTANT_SERVICE_URL:http://localhost:8084}
+          predicates:
+            - Path=/api/assistant/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 2
+                redis-rate-limiter.burstCapacity: 5
+                key-resolver: "#{@ipKeyResolver}"
 
 # CORS allowlist — must match wherever the frontend is actually served
 # from. Comma-separated for multiple environments.

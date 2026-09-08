@@ -1,0 +1,62 @@
+[
+  {
+    "id": "queue-why",
+    "question": "Why do I have to wait in a queue to see my result?",
+    "answer": "On result day, millions of people try to check at the same moment. Letting everyone through at once would overload the database and cause it to crash for everyone. The queue lets people through at a steady, safe rate so the site stays up.",
+    "keywords": ["queue", "wait", "waiting", "line", "why", "slow"]
+  },
+  {
+    "id": "queue-close-tab",
+    "question": "Will I lose my place if I close the tab?",
+    "answer": "No. Your position is saved on the server, not in your browser. You can close the tab and come back later using the same link and you will not lose your place.",
+    "keywords": ["close", "tab", "lose", "position", "refresh", "leave", "browser"]
+  },
+  {
+    "id": "queue-notify",
+    "question": "How will I know when it's my turn?",
+    "answer": "If your browser allows it, a notification is sent the instant you are admitted. Otherwise, the page updates automatically over a live connection, so there is no need to keep refreshing.",
+    "keywords": ["notify", "notification", "turn", "admitted", "alert", "sms", "whatsapp"]
+  },
+  {
+    "id": "grievance-wrong-result",
+    "question": "My result looks wrong, what do I do?",
+    "answer": "You can raise a formal grievance ticket directly from the result page. You will get a reference number to track its status, and no login is needed.",
+    "keywords": ["wrong", "grievance", "complaint", "mistake", "error", "marks", "incorrect", "dispute"]
+  },
+  {
+    "id": "security-data-safety",
+    "question": "Is my data safe on this portal?",
+    "answer": "Result access is protected by a signed, time-limited ticket issued only after a genuine queue turn. Results cannot be fetched by guessing a roll number, and all queue activity is tamper-evident logged.",
+    "keywords": ["safe", "secure", "security", "privacy", "data", "guess", "hack"]
+  },
+  {
+    "id": "captcha-failed",
+    "question": "The verification question (captcha) failed, why?",
+    "answer": "Verification answers expire after a few minutes and can only be used once. If yours failed, a fresh question is generated automatically, so just answer the new one shown.",
+    "keywords": ["captcha", "verification", "challenge", "failed", "wrong answer"]
+  },
+  {
+    "id": "admit-card",
+    "question": "How do I download my admit card / hall ticket?",
+    "answer": "Once you have joined the queue and been admitted for your exam, an admit card download option appears on the same result/ticket page. It uses the same admission ticket as your result lookup.",
+    "keywords": ["admit card", "hall ticket", "download", "pdf"]
+  },
+  {
+    "id": "grievance-status",
+    "question": "How do I check the status of a grievance I already raised?",
+    "answer": "Use the reference number (starting with GRV-) you were given when you raised the grievance, on the Track page. No login or roll number is required, just the reference number.",
+    "keywords": ["track", "status", "grievance", "ticket", "reference", "GRV"]
+  },
+  {
+    "id": "application-status",
+    "question": "How do I check my application status?",
+    "answer": "The application status timeline shows each stage your application has passed through, from submission to result declaration. You can check it from the Track page using your roll number.",
+    "keywords": ["application", "status", "timeline", "stage", "submitted", "verified"]
+  },
+  {
+    "id": "multiple-roll-numbers",
+    "question": "Can I check results for more than one roll number, e.g. for a sibling or a friend?",
+    "answer": "Yes. Each roll number goes through its own queue turn and gets its own ticket; you can save multiple roll numbers on your device to check them more easily next time, but each still needs to queue individually.",
+    "keywords": ["multiple", "sibling", "friend", "family", "another roll number", "saved"]
+  }
+]

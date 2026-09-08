@@ -1,5 +1,6 @@
 package in.gov.sarthi.result.model;
 
+import in.gov.sarthi.result.security.SearchableEncryptedConverter;
 import jakarta.persistence.*;
 
 import java.time.Instant;
@@ -9,12 +10,11 @@ import java.time.Instant;
  * SUBMITTED → VERIFIED → ADMIT_CARD_ISSUED → RESULT_DECLARED — instead
  * of only ever exposing a single point-in-time result lookup.
  *
- * Stored in plaintext (unlike Grievance's rollNumber/message), matching
- * the existing `results` table's own security posture: stage
- * information alone isn't the sensitive part the way marks or a
- * grievance's free-text content are. If this table later grows to hold
- * anything more sensitive, apply SearchableEncryptedConverter to
- * rollNumber the same way Grievance does.
+ * rollNumber is deterministically encrypted (SearchableEncryptedConverter),
+ * consistent with Grievance and (as of the results-table encryption fix)
+ * Result itself — a raw DB dump of this table no longer hands out a
+ * plaintext roll number either. stage/note carry no identity information
+ * on their own, so they're left as-is.
  */
 @Entity
 @Table(name = "application_status_history", indexes = {
@@ -31,6 +31,7 @@ public class ApplicationStatusHistory {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Convert(converter = SearchableEncryptedConverter.class)
     @Column(nullable = false, columnDefinition = "TEXT")
     private String rollNumber;
 

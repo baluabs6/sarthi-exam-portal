@@ -47,6 +47,12 @@ traffic spike degrades into a visible, bounded wait instead of a crash.
       │ notification-service│  WhatsApp → SMS fallback
       │  (MongoDB log)      │
       └────────────────────┘
+
+      ┌────────────────────┐  Separate branch off the gateway, not off
+      │ assistant-service   │  queue/result — an LLM outage or slow
+      │  (FAQ RAG chat +    │  response can never affect the hot path.
+      │  cluster labeling)  │  No-ops gracefully if ANTHROPIC_API_KEY
+      └────────────────────┘  is unset. See "AI / RAG / LLM integration".
 ```
 
 **Why this shape solves the problem:**
@@ -80,10 +86,28 @@ docker compose up --build
 ```
 - Frontend: http://localhost:3000
 - Gateway/API: http://localhost:8080
-- RabbitMQ management UI: http://localhost:15672 (guest/guest)
+- RabbitMQ management UI: http://localhost:15672 (credentials from
+  `RABBITMQ_USER`/`RABBITMQ_PASSWORD` in `.env`, `guest`/`guest` if unset)
 
 Try roll numbers from the seed data (`result-service/src/main/resources/db/migration/V1__init_schema.sql`):
 `26104578912`, `26104578913`, `26104578914` (exam: NEET-UG 2026).
+
+This repo ships with a real (dev-only) `.env` already checked in with
+generated secrets, so `docker compose up` works with every optional
+feature turned on out of the box:
+- **Multi-role admin** — three named accounts in `ADMIN_ACCOUNTS_JSON`
+  (`Priya`/`SUPER_ADMIN`, `Raj`/`QUEUE_OPERATOR`, `Meera`/`AUDITOR`); the
+  three keys are listed in `.env`'s comments. Log into the admin
+  dashboard with any of them to see role-appropriate access.
+- **Partner API** — `PARTNER_API_KEY` is set, so
+  `POST /api/partner/results/bulk` works immediately.
+- **AI assistant** — `ANTHROPIC_API_KEY` is left blank by default (no
+  key ships in this repo). Set it yourself to turn on the FAQ chat
+  fallback and grievance-cluster labeling described below; everything
+  else works identically either way.
+
+Regenerate every value in `.env` before this ever goes near a real
+deployment — see `.env.example` for what each variable does.
 
 ### Local dev without Docker
 ```bash
@@ -97,6 +121,7 @@ docker run -p 5672:5672 -p 15672:15672 rabbitmq:3.13-management-alpine
 cd backend && mvn -pl queue-service -am spring-boot:run
 cd backend && mvn -pl result-service -am spring-boot:run
 cd backend && mvn -pl notification-service -am spring-boot:run
+cd backend && mvn -pl assistant-service -am spring-boot:run
 cd backend && mvn -pl gateway-service -am spring-boot:run
 
 # Frontend
@@ -197,32 +222,69 @@ management via a vault rather than env vars.
   intentionally *not* wired to a real LLM — see "AI/RAG integration
   points" below for what that would actually take.
 
-## AI / RAG / LLM integration points (not wired up — needs your own API key)
+## AI / RAG / LLM integration: `assistant-service`
 
-This build does not call any AI model — no OpenAI/Anthropic key is
-configured, and none should ever be hardcoded into the frontend bundle.
-If you want to add real AI features on top of this codebase, here's
-where they'd plug in cleanly:
+This is now wired up, as an entirely separate, optional microservice —
+`backend/assistant-service`. It exists to keep every LLM-touching
+feature isolated from the one property the rest of this system
+protects: queue-service and result-service must survive a result-day
+traffic spike, and an LLM provider's latency/cost/downtime must never
+be able to threaten that. Concretely:
 
-- **RAG helpdesk chatbot**: replace `FaqWidget.jsx`'s keyword search with
-  a call to a new backend endpoint (e.g. a small `ai-service`) that does
-  real retrieval (embeddings + a vector store like pgvector/Chroma) over
-  your actual FAQ/circular documents, then calls an LLM API server-side
-  — never from the browser.
-- **Grounded result explainer**: a backend endpoint that takes a
-  candidate's already-verified DB row (score, cutoff, percentile) and
-  asks an LLM to phrase it in plain language — the model only rephrases
-  retrieved numbers, never computes or guesses them.
-- **Grievance triage**: classify incoming grievance `category`/`message`
-  text with an LLM call in `GrievanceService.raise()` to auto-suggest
-  urgency/routing before a human reviews it.
-- **Admin ops copilot**: a LangChain agent with read-only tools over the
-  `/api/admin/queues` endpoint and the Mongo audit trail, so staff can
-  ask plain-language questions about system state.
+- **It is fully optional.** Every other service behaves identically
+  whether `ANTHROPIC_API_KEY` is set or not. Leave it blank in `.env`
+  and the AI endpoints just answer "not configured" instead of erroring.
+- **Nothing in the hot path calls it.** `/api/queue/join` and
+  `/api/results/{rollNumber}` have zero dependency on this service,
+  directly or indirectly.
+- **It has its own defenses**: a tighter Redis-backed per-IP rate limit
+  than the gateway route allows (LLM calls cost real money per request),
+  a 4s connect / 8s read timeout so it can never hang a caller, and a
+  Resilience4j circuit breaker that fails fast for 30s after a run of
+  failures instead of letting every request pay the full timeout while
+  the provider is degraded.
 
-Each of these needs a real provider API key set as a backend environment
-variable (never shipped to the frontend), and a decision about what
-candidate data, if any, is allowed to leave your infrastructure.
+### What it actually does
+
+1. **FAQ RAG chat** (`POST /api/assistant/faq-chat`, public, no
+   ticket/login) — `FaqRetriever` does TF-IDF + cosine-similarity
+   retrieval over `faq-catalog.json` (the backend mirror of
+   `frontend/src/components/faqData.js`), then `AssistantService` asks
+   Claude to answer **using only the retrieved FAQ text**, explicitly
+   instructed to say "I don't know" rather than invent policy details.
+   `FaqWidget.jsx` calls this only as a fallback when its instant local
+   keyword search finds nothing. Deliberately lexical retrieval, not
+   embeddings — see the doc comment on `FaqRetriever` for why, and the
+   documented upgrade path to pgvector if the FAQ corpus grows large.
+2. **Grievance cluster labeling** (`POST /api/assistant/label-cluster`,
+   admin-key gated) — one bounded LLM call per already-computed cluster
+   (`GrievanceService.clusterOpenGrievances`, which is already filtered
+   to size ≥ 3) to turn a raw sample message into a short label like
+   "Marks not updated after re-evaluation" for the admin dashboard.
+   Never called automatically or in bulk — an admin clicks "Label with
+   AI" per cluster, so worst case it's a handful of calls per page load.
+
+### Explicitly not done, and why
+
+- **No candidate PII is ever sent to the LLM.** Both endpoints only ever
+  send FAQ text or already-admin-visible grievance samples — never a
+  roll number, name, or score.
+- **No result explanation / grievance auto-response feature.** A result
+  is a factual record and a grievance resolution has real consequences
+  for someone's exam outcome; phrasing either via a generative model,
+  even "just for readability," was deliberately left out. If you want
+  an AI-drafted grievance response, keep a human in the loop the same
+  way `suggestDraftNote`'s heuristic already does — draft only, never
+  auto-sent.
+- **No admin ops copilot / general chat agent.** Read-only Q&A over
+  audit logs is a reasonable next step, but wasn't built here — it would
+  need its own scoped tool access, not a shared prompt with the FAQ bot.
+
+### Enabling it
+
+Set `ANTHROPIC_API_KEY` (and optionally `ANTHROPIC_MODEL`, default
+`claude-sonnet-4-6`) in `.env`, then `docker compose up --build
+assistant-service gateway-service`. No other service needs to change.
 
 ## Second security/feature hardening pass
 
@@ -387,6 +449,14 @@ consistent with every AI-adjacent feature built so far in this project:
   — a rule-based k6 script modeling an opening spike, long tail, and
   secondary burst instead of flat constant load, closer to real
   result-day traffic shape while staying fully deterministic.
+
+## Cloud deployment: Azure + GCP (active-active DR)
+
+This repo also includes a full cloud deployment design and Terraform:
+Azure as the primary cloud, GCP as an active-active disaster-recovery
+region. Start with `docs/CLOUD_DEPLOYMENT.md` — it explains why the
+result database is deliberately *not* fully active-active even though
+everything else is, before you touch `infra/terraform/`.
 
 ## Extending this for production
 

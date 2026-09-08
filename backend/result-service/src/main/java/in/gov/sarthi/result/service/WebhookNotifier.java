@@ -41,8 +41,33 @@ public class WebhookNotifier {
     private final java.util.concurrent.ExecutorService executor = Executors.newFixedThreadPool(2);
 
     public WebhookNotifier() {
-        this.restTemplate = new RestTemplate();
-        this.restTemplate.getRequestFactory();
+        this.restTemplate = new RestTemplate(new NonRedirectingRequestFactory());
+    }
+
+    /**
+     * SECURITY: disables HTTP redirect-following. Without this, a
+     * webhook URL that legitimately resolves to a public IP (passing
+     * isSafeUrl) could respond with a 302 to
+     * http://169.254.169.254/latest/meta-data/ or another internal
+     * address, and the default HttpURLConnection-backed request factory
+     * would follow it — completely bypassing the safety check above,
+     * since that check only ever validated the ORIGINAL url. Also sets
+     * explicit timeouts: previously there were none, so an
+     * unreachable/slow webhook endpoint could tie up a pool thread
+     * indefinitely (the pool only has 2 threads — see the class comment
+     * on fire-and-forget delivery).
+     */
+    private static class NonRedirectingRequestFactory extends org.springframework.http.client.SimpleClientHttpRequestFactory {
+        NonRedirectingRequestFactory() {
+            setConnectTimeout((int) Duration.ofSeconds(4).toMillis());
+            setReadTimeout((int) Duration.ofSeconds(8).toMillis());
+        }
+
+        @Override
+        protected void prepareConnection(java.net.HttpURLConnection connection, String httpMethod) throws java.io.IOException {
+            super.prepareConnection(connection, httpMethod);
+            connection.setInstanceFollowRedirects(false);
+        }
     }
 
     public boolean isSafeUrl(String url) {

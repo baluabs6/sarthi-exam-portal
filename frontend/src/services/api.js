@@ -90,6 +90,10 @@ export const api = {
   },
 
   // ---- Admin (requires X-Admin-Key) ----
+  adminWhoami(adminKey) {
+    return fetch(`${BASE}/admin/whoami`, { headers: { 'X-Admin-Key': adminKey } }).then(handle)
+  },
+
   adminGetQueues(adminKey) {
     return fetch(`${BASE}/admin/queues`, { headers: { 'X-Admin-Key': adminKey } }).then(handle)
   },
@@ -175,5 +179,33 @@ export const api = {
   // Public — see ApplicationStatusController for why this isn't ticket-gated.
   getApplicationTimeline(rollNumber, examId) {
     return fetch(`${BASE}/applications/${rollNumber}/timeline?examId=${encodeURIComponent(examId)}`).then(handle)
+  },
+
+  // ---- AI assistant (assistant-service) — every call here degrades
+  // gracefully to aiEnabled:false if ANTHROPIC_API_KEY isn't configured;
+  // callers should treat that as a normal response, not an error. ----
+
+  getAssistantStatus() {
+    return fetch(`${BASE}/assistant/status`).then(handle)
+  },
+
+  // Candidate-facing RAG chat fallback, used when local keyword FAQ
+  // search comes up empty. No login/ticket required.
+  askFaqAssistant(question) {
+    return fetch(`${BASE}/assistant/faq-chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question })
+    }).then(handle)
+  },
+
+  // Admin-only: labels an already-computed grievance cluster (see
+  // adminGetClusters) with a short human-readable summary.
+  adminLabelCluster(adminKey, sampleMessage, clusterSize) {
+    return fetch(`${BASE}/assistant/label-cluster`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Key': adminKey },
+      body: JSON.stringify({ sampleMessage, clusterSize })
+    }).then(handle)
   }
 }

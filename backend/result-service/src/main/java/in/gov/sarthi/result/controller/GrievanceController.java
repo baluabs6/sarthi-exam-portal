@@ -3,13 +3,18 @@ package in.gov.sarthi.result.controller;
 import in.gov.sarthi.result.dto.GrievanceRequest;
 import in.gov.sarthi.result.dto.GrievanceResponse;
 import in.gov.sarthi.result.dto.GrievanceStatusUpdateRequest;
+import in.gov.sarthi.result.security.TicketReplayGuard;
+import in.gov.sarthi.result.security.TicketService;
 import in.gov.sarthi.result.service.GrievanceService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
@@ -17,10 +22,16 @@ import java.util.Map;
 @RequestMapping("/api/grievances")
 public class GrievanceController {
 
-    private final GrievanceService grievanceService;
+    private static final Logger log = LoggerFactory.getLogger(GrievanceController.class);
 
-    public GrievanceController(GrievanceService grievanceService) {
+    private final GrievanceService grievanceService;
+    private final TicketService ticketService;
+    private final TicketReplayGuard replayGuard;
+
+    public GrievanceController(GrievanceService grievanceService, TicketService ticketService, TicketReplayGuard replayGuard) {
         this.grievanceService = grievanceService;
+        this.ticketService = ticketService;
+        this.replayGuard = replayGuard;
     }
 
     /** Anyone can raise a grievance — no admission ticket required, since a result was already seen. */
@@ -31,15 +42,43 @@ public class GrievanceController {
         return ResponseEntity.status(HttpStatus.CREATED).body(grievanceService.raise(request, idempotencyKey));
     }
 
-    /** Candidates check status with just the reference number they were given — no login needed. */
+    /** Candidates check status with just the reference number they were given — no login needed. This is fine as-is: a GRV- reference has ~32 bits of random entropy, unlike a roll number, so it isn't practically guessable/enumerable. */
     @GetMapping("/{ticketRef}")
     public ResponseEntity<GrievanceResponse> get(@PathVariable String ticketRef) {
         return ResponseEntity.ok(grievanceService.getByTicketRef(ticketRef));
     }
 
-    /** Candidate data export: their own grievance history, self-serve, no login required beyond knowing their own roll number. */
+    /**
+     * Candidate data export: their own grievance history for a roll
+     * number. Previously this only required knowing the roll number
+     * itself — since roll numbers are often sequential/guessable (see
+     * the seed data), that let anyone pull anyone else's grievance
+     * history. Now it requires the same signed admission ticket used for
+     * /api/results/{rollNumber}, redeemed a second time under a distinct
+     * "grievance-export" resource tag (see TicketReplayGuard — the same
+     * genuine queue turn legitimately covers both the result and this
+     * export, but each ticket still only works once per resource).
+     */
     @GetMapping("/export")
-    public ResponseEntity<List<GrievanceResponse>> exportForRollNumber(@RequestParam String rollNumber) {
+    public ResponseEntity<?> exportForRollNumber(
+            @RequestParam String rollNumber,
+            @RequestHeader(value = "Authorization", required = false) String authorization) {
+
+        String ticket = extractBearerToken(authorization);
+        var verified = ticketService.verify(ticket);
+        if (verified.isEmpty() || !verified.get().rollNumber().equals(rollNumber)) {
+            log.warn("Grievance export denied for a roll number — invalid/mismatched ticket");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
+                    "message", "A valid admission ticket is required. Please look up this result first."
+            ));
+        }
+        if (!replayGuard.tryConsume(verified.get().jti(), Duration.ofMinutes(15), "grievance-export")) {
+            log.warn("Grievance export denied — ticket already used for this resource");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
+                    "message", "This admission ticket has already been used for a grievance export. Please look up the result again."
+            ));
+        }
+
         return ResponseEntity.ok(grievanceService.listForRollNumber(rollNumber));
     }
 
@@ -98,6 +137,13 @@ public class GrievanceController {
     public ResponseEntity<List<GrievanceResponse>> bulkUpdateStatus(
             @RequestBody BulkStatusUpdateRequest request, HttpServletRequest httpRequest) {
         return ResponseEntity.ok(grievanceService.bulkUpdateStatus(request.ticketRefs(), request.update(), actor(httpRequest)));
+    }
+
+    private String extractBearerToken(String authorizationHeader) {
+        if (authorizationHeader == null || !authorizationHeader.startsWith("Bearer ")) {
+            return null;
+        }
+        return authorizationHeader.substring("Bearer ".length()).trim();
     }
 
     private String clientIp(HttpServletRequest request) {

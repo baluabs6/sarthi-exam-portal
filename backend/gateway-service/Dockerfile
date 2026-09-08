@@ -5,6 +5,7 @@ COPY gateway-service/pom.xml /build/gateway-service/pom.xml
 COPY queue-service/pom.xml /build/queue-service/pom.xml
 COPY result-service/pom.xml /build/result-service/pom.xml
 COPY notification-service/pom.xml /build/notification-service/pom.xml
+COPY assistant-service/pom.xml /build/assistant-service/pom.xml
 RUN mvn -q -N install
 COPY gateway-service /build/gateway-service
 RUN mvn -q -pl gateway-service -am package -DskipTests

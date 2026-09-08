@@ -30,6 +30,17 @@ export default function FaqWidget() {
   const [query, setQuery] = useState('')
   const results = useMemo(() => search(query), [query])
 
+  const [aiEnabled, setAiEnabled] = useState(false)
+  const [aiState, setAiState] = useState('idle') // idle | loading | answered | error
+  const [aiAnswer, setAiAnswer] = useState(null)
+  const [aiQueryAsked, setAiQueryAsked] = useState('')
+
+  useEffect(() => {
+    // Cheap, once-per-mount check so the "Ask AI" button only ever shows
+    // up when the backend is actually configured to answer it.
+    api.getAssistantStatus().then((s) => setAiEnabled(s.aiEnabled)).catch(() => setAiEnabled(false))
+  }, [])
+
   useEffect(() => {
     if (query.trim().length < 4 || results.length > 0) return
     const timeout = setTimeout(() => {
@@ -37,6 +48,26 @@ export default function FaqWidget() {
     }, 800) // wait for the person to stop typing before reporting
     return () => clearTimeout(timeout)
   }, [query, results])
+
+  // Reset any previous AI answer as soon as the person edits the query again.
+  useEffect(() => {
+    setAiState('idle')
+    setAiAnswer(null)
+  }, [query])
+
+  async function askAi() {
+    const question = query.trim()
+    if (!question) return
+    setAiState('loading')
+    setAiQueryAsked(question)
+    try {
+      const res = await api.askFaqAssistant(question)
+      setAiAnswer(res)
+      setAiState('answered')
+    } catch {
+      setAiState('error')
+    }
+  }
 
   return (
     <div className="faq-widget">
@@ -54,8 +85,27 @@ export default function FaqWidget() {
             autoFocus
           />
           <div className="faq-results">
-            {results.length === 0 && (
-              <p className="hint" style={{ padding: '0 2px' }}>No matching answer — try different words, or raise a grievance for anything result-specific.</p>
+            {results.length === 0 && aiState === 'idle' && (
+              <div style={{ padding: '0 2px' }}>
+                <p className="hint">No matching answer in the FAQ — try different words{aiEnabled ? ', or' : '.'}</p>
+                {aiEnabled && query.trim().length >= 4 && (
+                  <button className="btn" style={{ padding: '6px 14px', fontSize: 13 }} onClick={askAi}>Ask AI assistant</button>
+                )}
+                <p className="hint">You can also raise a grievance for anything result-specific.</p>
+              </div>
+            )}
+            {aiState === 'loading' && <p className="hint" style={{ padding: '0 2px' }}>Thinking…</p>}
+            {aiState === 'error' && (
+              <p className="hint" style={{ padding: '0 2px' }}>The AI assistant is temporarily unavailable — please try the keyword search or raise a grievance.</p>
+            )}
+            {aiState === 'answered' && aiAnswer && (
+              <div className="faq-item">
+                <p className="faq-q">{aiQueryAsked}</p>
+                <p className="faq-a">{aiAnswer.answer}</p>
+                {aiAnswer.grounded && (
+                  <p className="hint" style={{ marginTop: 4 }}>Answered from the FAQ using AI — always double-check anything result-specific via a grievance ticket.</p>
+                )}
+              </div>
             )}
             {results.map((entry) => (
               <div className="faq-item" key={entry.q}>

@@ -20,6 +20,7 @@
     <module>queue-service</module>
     <module>result-service</module>
     <module>notification-service</module>
+    <module>assistant-service</module>
   </modules>
 
   <parent>

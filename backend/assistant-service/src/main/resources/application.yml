@@ -1,0 +1,47 @@
+server:
+  port: 8084
+
+spring:
+  application:
+    name: assistant-service
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      ssl:
+        enabled: ${REDIS_SSL_ENABLED:false}
+
+# Every LLM feature in the system is gated on this single key. Leave
+# blank to run the whole portal with AI features disabled — nothing
+# else in this service (or any other service) requires it to be set.
+assistant:
+  anthropic-api-key: ${ANTHROPIC_API_KEY:}
+  anthropic-model: ${ANTHROPIC_MODEL:claude-sonnet-4-6}
+  # Reuses the same admin credentials as queue-service/result-service —
+  # see AdminKeyGate for why this doesn't need its own full role system.
+  admin-api-key: ${ADMIN_API_KEY:}
+  admin-accounts-json: ${ADMIN_ACCOUNTS_JSON:}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      claude:
+        # After 5 of the last 10 calls fail, stop even trying for 30s and
+        # fail fast instead — protects the FAQ widget / admin dashboard
+        # from paying the full request timeout on every single call while
+        # the LLM provider is down or degraded.
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 2

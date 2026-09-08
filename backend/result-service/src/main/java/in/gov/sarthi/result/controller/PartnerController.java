@@ -1,6 +1,7 @@
 package in.gov.sarthi.result.controller;
 
 import in.gov.sarthi.result.model.ResultResponse;
+import in.gov.sarthi.result.service.PartnerUsageTracker;
 import in.gov.sarthi.result.service.ResultLookupService;
 import in.gov.sarthi.result.util.PiiMasker;
 import jakarta.validation.constraints.NotEmpty;
@@ -9,6 +10,7 @@ import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -38,9 +40,11 @@ public class PartnerController {
     private static final int MAX_BULK_SIZE = 100;
 
     private final ResultLookupService resultLookupService;
+    private final PartnerUsageTracker usageTracker;
 
-    public PartnerController(ResultLookupService resultLookupService) {
+    public PartnerController(ResultLookupService resultLookupService, PartnerUsageTracker usageTracker) {
         this.resultLookupService = resultLookupService;
+        this.usageTracker = usageTracker;
     }
 
     public record BulkResultRequest(
@@ -67,6 +71,28 @@ public class PartnerController {
                 })
                 .toList();
 
+        long errorCount = entries.stream().filter(e -> e.error() != null).count();
+        usageTracker.recordCall(request.rollNumbers().size(), (int) errorCount);
+
         return ResponseEntity.ok(entries);
+    }
+
+    /**
+     * Self-service usage visibility — see PartnerUsageTracker's class
+     * comment for the gap this closes. Gated by the same X-Partner-Key
+     * as every other endpoint here (see PartnerAuthInterceptor /
+     * AdminWebConfig-equivalent registration), not a new credential.
+     */
+    @GetMapping("/usage")
+    public ResponseEntity<Map<String, Object>> usage() {
+        var snapshot = usageTracker.snapshot();
+        return ResponseEntity.ok(Map.of(
+                "callsToday", snapshot.callsToday(),
+                "rollNumbersLookedUpToday", snapshot.rollNumbersLookedUpToday(),
+                "errorsToday", snapshot.errorsToday(),
+                "lastCallAt", snapshot.lastCallAt() == null ? "" : snapshot.lastCallAt(),
+                "maxRollNumbersPerRequest", MAX_BULK_SIZE,
+                "note", "Gateway-enforced rate limit is separate and IP-based (10 req/s, burst 20) — this is self-reported call volume, not the live limiter state."
+        ));
     }
 }
