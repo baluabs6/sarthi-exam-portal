@@ -5,9 +5,9 @@ version: "3.9"
 #
 #   docker compose up --build
 #
-# Frontend:        http://localhost:3000
-# Gateway (API):   http://localhost:8080
-# RabbitMQ console: http://localhost:15672  (guest/guest)
+# Frontend:        ********************0
+# Gateway (API):   ********************0
+# RabbitMQ console: *********************2  (****t/****t)
 #
 # Bring the whole thing down (and wipe data volumes) with:
 #   docker compose down -v
@@ -22,7 +22,7 @@ services:
     environment:
       POSTGRES_DB: sarthi_results
       POSTGRES_USER: sarthi
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sarthi_pass}
+      POSTGRES_PASSWORD: **********s
     ports:
       - "5432:5432"
     volumes:
@@ -59,9 +59,6 @@ services:
 
   rabbitmq:
     image: rabbitmq:3.13-management-alpine
-    environment:
-      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-guest}
     ports:
       - "5672:5672"   # AMQP
       - "15672:15672" # management UI
@@ -72,18 +69,6 @@ services:
       retries: 10
 
   # ---- Application services ---------------------------------------------
-  #
-  # SECURITY: every service below publishes its port straight to the host
-  # (8080-8084) for local-dev convenience — being able to curl
-  # queue-service or result-service directly while developing. In a real
-  # deployment, ONLY the frontend (nginx) should ever be internet-facing;
-  # everything else should be reachable solely over the internal network.
-  # Bypassing nginx to hit gateway-service (or any backend) directly also
-  # bypasses nginx's X-Forwarded-For hardening (see frontend/nginx.conf),
-  # which is exactly the kind of direct access a real deployment must not
-  # allow. infra/terraform/azure and infra/terraform/gcp both already
-  # reflect this correctly — only the frontend Container App / Cloud Run
-  # service has external ingress enabled.
 
   gateway-service:
     build:
@@ -94,19 +79,16 @@ services:
     environment:
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      QUEUE_SERVICE_URL: http://queue-service:8081
-      QUEUE_SERVICE_WS_URL: ws://queue-service:8081
-      RESULT_SERVICE_URL: http://result-service:8082
-      ASSISTANT_SERVICE_URL: http://assistant-service:8084
-      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
+      QUEUE_SERVICE_URL: ************************1
+      QUEUE_SERVICE_WS_URL: **********************1
+      RESULT_SERVICE_URL: *************************2
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-********************0}
     depends_on:
       redis:
         condition: service_healthy
       queue-service:
         condition: service_started
       result-service:
-        condition: service_started
-      assistant-service:
         condition: service_started
 
   queue-service:
@@ -118,22 +100,19 @@ services:
     environment:
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      MONGODB_URI: mongodb://mongodb:27017/sarthi_audit
+      MONGODB_URI: ***********************************t
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_PORT: 5672
-      RABBITMQ_USER: ${RABBITMQ_USER:-guest}
-      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-guest}
+      RABBITMQ_USER: ****t
+      RABBITMQ_PASSWORD: ****t
       QUEUE_ADMIT_PER_TICK: 5
       QUEUE_TICK_INTERVAL_SECONDS: 2
       # Must be identical to result-service's TICKET_SIGNING_SECRET below.
       # Override this in a real deployment — see .env.example.
-      TICKET_SIGNING_SECRET: ${TICKET_SIGNING_SECRET:-dev-only-insecure-secret-change-me-before-deploying}
-      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
+      TICKET_SIGNING_SECRET: ${TICKET_SIGNING_SECRET:-**************************************************g}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-********************0}
       # Gates /api/admin/** — see .env.example.
-      ADMIN_API_KEY: ${ADMIN_API_KEY:-dev-only-insecure-admin-key-change-me}
-      # Optional real per-account admin roles — must be set identically
-      # here and on result-service, since both gate on the same accounts.
-      ADMIN_ACCOUNTS_JSON: ${ADMIN_ACCOUNTS_JSON:-}
+      ADMIN_API_KEY: ${ADMIN_API_KEY:-************************************e}
     depends_on:
       redis:
         condition: service_healthy
@@ -153,19 +132,19 @@ services:
       POSTGRES_PORT: 5432
       POSTGRES_DB: sarthi_results
       POSTGRES_USER: sarthi
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sarthi_pass}
+      POSTGRES_PASSWORD: **********s
       REDIS_HOST: redis
       REDIS_PORT: 6379
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_PORT: 5672
-      RABBITMQ_USER: ${RABBITMQ_USER:-guest}
-      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-guest}
+      RABBITMQ_USER: ****t
+      RABBITMQ_PASSWORD: ****t
       # Must be identical to queue-service's TICKET_SIGNING_SECRET above.
-      TICKET_SIGNING_SECRET: ${TICKET_SIGNING_SECRET:-dev-only-insecure-secret-change-me-before-deploying}
+      TICKET_SIGNING_SECRET: ${TICKET_SIGNING_SECRET:-**************************************************g}
       # Gates /api/grievances/admin/** — see .env.example.
-      ADMIN_API_KEY: ${ADMIN_API_KEY:-dev-only-insecure-admin-key-change-me}
+      ADMIN_API_KEY: ${ADMIN_API_KEY:-************************************e}
       # Encrypts roll numbers / grievance text at rest — see .env.example.
-      PII_ENCRYPTION_KEY: ${PII_ENCRYPTION_KEY:-dev-only-insecure-pii-key-change-me-before-deploying}
+      PII_ENCRYPTION_KEY: ${PII_ENCRYPTION_KEY:-***************************************************g}
       # Optional real per-account admin roles — see .env.example.
       ADMIN_ACCOUNTS_JSON: ${ADMIN_ACCOUNTS_JSON:-}
       # Optional partner/institutional bulk API — disabled if blank.
@@ -185,35 +164,15 @@ services:
     ports:
       - "8083:8083"
     environment:
-      MONGODB_URI: mongodb://mongodb:27017/sarthi_notifications
+      MONGODB_URI: *******************************************s
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_PORT: 5672
-      RABBITMQ_USER: ${RABBITMQ_USER:-guest}
-      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-guest}
+      RABBITMQ_USER: ****t
+      RABBITMQ_PASSWORD: ****t
     depends_on:
       mongodb:
         condition: service_healthy
       rabbitmq:
-        condition: service_healthy
-
-  assistant-service:
-    build:
-      context: ./backend
-      dockerfile: assistant-service/Dockerfile
-    ports:
-      - "8084:8084"
-    environment:
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      # Every AI feature (FAQ chat, cluster labeling) is a graceful
-      # no-op when this is blank — the rest of the stack is unaffected
-      # either way. Set it in .env to turn the AI features on.
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-4-6}
-      ADMIN_API_KEY: ${ADMIN_API_KEY:-dev-only-insecure-admin-key-change-me}
-      ADMIN_ACCOUNTS_JSON: ${ADMIN_ACCOUNTS_JSON:-}
-    depends_on:
-      redis:
         condition: service_healthy
 
   frontend:

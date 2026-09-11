@@ -34,13 +34,10 @@ public class TicketService {
     public TicketService(
             @Value("${ticket.signing-secret}") String signingSecret,
             @Value("${ticket.ttl-seconds:900}") long ttlSeconds) {
-        // Always derive via SHA-256 rather than the previous "use raw
-        // bytes if long enough, else repeat-pad to 32" approach — see
-        // result-service's TicketService.deriveKeyBytes for why
-        // byte-repetition padding weakens a short secret's effective
-        // entropy. Both sides MUST derive identically or signature
-        // verification breaks — this mirrors result-service exactly.
-        this.key = Keys.hmacShaKeyFor(deriveKeyBytes(signingSecret));
+        // HS256 needs >= 256 bits; pad/hash short secrets defensively so a
+        // short dev value in application.yml can't blow up key derivation.
+        byte[] raw = signingSecret.getBytes(StandardCharsets.UTF_8);
+        this.key = Keys.hmacShaKeyFor(raw.length >= 32 ? raw : padTo32(raw));
         this.ttl = Duration.ofSeconds(ttlSeconds);
     }
 
@@ -58,12 +55,11 @@ public class TicketService {
                 .compact();
     }
 
-    private static byte[] deriveKeyBytes(String secret) {
-        try {
-            return java.security.MessageDigest.getInstance("SHA-256")
-                    .digest(secret.getBytes(StandardCharsets.UTF_8));
-        } catch (java.security.NoSuchAlgorithmException e) {
-            throw new IllegalStateException("Could not derive ticket signing key", e);
+    private static byte[] padTo32(byte[] raw) {
+        byte[] padded = new byte[32];
+        for (int i = 0; i < 32; i++) {
+            padded[i] = raw[i % raw.length];
         }
+        return padded;
     }
 }

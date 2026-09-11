@@ -8,7 +8,7 @@ spring:
   datasource:
     url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DB:sarthi_results}
     username: ${POSTGRES_USER:sarthi}
-    password: ${POSTGRES_PASSWORD:sarthi_pass}
+    password: ${POSTGRES_PASSWORD:**********s}
     hikari:
       # Bounded pool: this is the other half of the throttle — even if
       # queue-service somehow let too much through, the connection pool
@@ -32,9 +32,6 @@ spring:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
-      password: ${REDIS_PASSWORD:}
-      ssl:
-        enabled: ${REDIS_SSL_ENABLED:false}
 
   cache:
     type: redis
@@ -44,14 +41,14 @@ spring:
   rabbitmq:
     host: ${RABBITMQ_HOST:localhost}
     port: ${RABBITMQ_PORT:5672}
-    username: ${RABBITMQ_USER:guest}
-    password: ${RABBITMQ_PASSWORD:guest}
+    username: ${RABBITMQ_USER:****t}
+    password: ${RABBITMQ_PASSWORD:****t}
 
 # Must be byte-for-byte identical to queue-service's ticket.signing-secret,
 # or every admission ticket will fail verification here. Always override
 # via TICKET_SIGNING_SECRET in real deployments.
 ticket:
-  signing-secret: ${TICKET_SIGNING_SECRET:dev-only-insecure-secret-change-me-before-deploying}
+  signing-secret: ${TICKET_SIGNING_SECRET:**************************************************g}
 
 # Shared admin key gating /api/grievances/admin/** — see AdminAuthInterceptor.
 # For real per-account roles, set ADMIN_ACCOUNTS_JSON instead — e.g.
@@ -62,7 +59,7 @@ ticket:
 # everywhere). If unset, admin.api-key below is used as a single
 # SUPER_ADMIN account, for backward compatibility.
 admin:
-  api-key: ${ADMIN_API_KEY:dev-only-insecure-admin-key-change-me}
+  api-key: ${ADMIN_API_KEY:************************************e}
   accounts-json: ${ADMIN_ACCOUNTS_JSON:}
 
 # Separate credential for the partner/institutional bulk API

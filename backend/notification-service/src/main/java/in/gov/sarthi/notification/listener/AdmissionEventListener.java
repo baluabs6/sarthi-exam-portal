@@ -4,8 +4,6 @@ import in.gov.sarthi.notification.service.NotificationDispatchService;
 import org.springframework.amqp.core.Queue;
 import org.springframework.amqp.core.QueueBuilder;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
-import org.springframework.amqp.support.converter.Jackson2JsonMessageConverter;
-import org.springframework.amqp.support.converter.MessageConverter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.retry.annotation.Backoff;
@@ -23,19 +21,6 @@ class QueueDeclarations {
     @Bean
     public Queue admittedQueue() {
         return QueueBuilder.durable("queue.admitted").build();
-    }
-
-    // SECURITY/CORRECTNESS: queue-service publishes JSON (see its
-    // Jackson2JsonMessageConverter bean) — but a MessageConverter is
-    // per-Spring-context, not broker-wide, so this service needs its own
-    // instance too, or @RabbitListener methods expecting
-    // Map<String,String> fail to deserialize every message (the default
-    // SimpleMessageConverter doesn't handle JSON). This was silently
-    // breaking the entire WhatsApp/SMS admission notification pipeline —
-    // the flagship feature this service exists for.
-    @Bean
-    public MessageConverter jsonMessageConverter() {
-        return new Jackson2JsonMessageConverter();
     }
 }
 

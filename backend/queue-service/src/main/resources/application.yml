@@ -9,24 +9,14 @@ spring:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
-      # Previously unsupported entirely — meaning this service could
-      # never actually authenticate against a real managed Redis that
-      # requires it (Azure Cache for Redis requires an access key by
-      # default; GCP Memorystore now requires one too, see
-      # infra/terraform/gcp/main.tf's auth_enabled fix). Blank/false by
-      # default so local dev against a bare `redis:7-alpine` container
-      # (docker-compose.yml) is unaffected.
-      password: ${REDIS_PASSWORD:}
-      ssl:
-        enabled: ${REDIS_SSL_ENABLED:false}
     mongodb:
-      uri: ${MONGODB_URI:mongodb://localhost:27017/sarthi_audit}
+      uri: ${MONGODB_URI:*************************************t}
 
   rabbitmq:
     host: ${RABBITMQ_HOST:localhost}
     port: ${RABBITMQ_PORT:5672}
-    username: ${RABBITMQ_USER:guest}
-    password: ${RABBITMQ_PASSWORD:guest}
+    username: ${RABBITMQ_USER:****t}
+    password: ${RABBITMQ_PASSWORD:****t}
 
 # Admission throttle: this is the single knob that controls how much
 # concurrent load ever reaches result-service/Postgres. Lower it during
@@ -42,13 +32,13 @@ queue:
 # TICKET_SIGNING_SECRET env var in any real deployment; the default here
 # is only safe for local dev.
 ticket:
-  signing-secret: ${TICKET_SIGNING_SECRET:dev-only-insecure-secret-change-me-before-deploying}
+  signing-secret: ${TICKET_SIGNING_SECRET:**************************************************g}
   ttl-seconds: 900
 
 # CORS/WebSocket origin allowlist — comma-separated. Must match wherever
 # the frontend is actually served from.
 security:
-  allowed-origins: ${ALLOWED_ORIGINS:http://localhost:3000}
+  allowed-origins: ${ALLOWED_ORIGINS:********************0}
 
 # Shared admin key gating /api/admin/** — see AdminAuthInterceptor.
 # For real per-account roles, set ADMIN_ACCOUNTS_JSON instead — e.g.
@@ -58,7 +48,7 @@ security:
 # AUDITOR (read-only). If unset, admin.api-key below is used as a
 # single SUPER_ADMIN account, for backward compatibility.
 admin:
-  api-key: ${ADMIN_API_KEY:dev-only-insecure-admin-key-change-me}
+  api-key: ${ADMIN_API_KEY:************************************e}
   accounts-json: ${ADMIN_ACCOUNTS_JSON:}
 
 management:

@@ -45,8 +45,6 @@ export default function AdminDashboard() {
   const [faqGaps, setFaqGaps] = useState({})
   const [enumerationAlerts, setEnumerationAlerts] = useState([])
   const [anomalies, setAnomalies] = useState({})
-  const [clusterLabels, setClusterLabels] = useState({}) // index -> { loading, label, disabled }
-  const [whoami, setWhoami] = useState(null) // { name, role, canTuneQueue, canManageGrievances }
 
   function saveKey(e) {
     e.preventDefault()
@@ -60,7 +58,6 @@ export default function AdminDashboard() {
     sessionStorage.removeItem('sarthi-admin-key')
     setAdminKey('')
     setKeyInput('')
-    setWhoami(null)
   }
 
   async function loadAll() {
@@ -68,8 +65,7 @@ export default function AdminDashboard() {
     setLoading(true)
     setError('')
     try {
-      const [who, ov, gr, log, cl, gaps, enumIps, anom] = await Promise.all([
-        api.adminWhoami(adminKey),
+      const [ov, gr, log, cl, gaps, enumIps, anom] = await Promise.all([
         api.adminGetQueues(adminKey),
         api.adminListGrievances(adminKey, grievanceStatus, searchQuery),
         api.adminGetAuditLog(adminKey),
@@ -78,7 +74,6 @@ export default function AdminDashboard() {
         api.adminGetEnumerationAlerts(adminKey),
         api.adminGetAnomalies(adminKey),
       ])
-      setWhoami(who)
       setOverview(ov)
       setRateInput(String(ov.admitPerTick))
       setGrievances(gr)
@@ -136,22 +131,6 @@ export default function AdminDashboard() {
       loadAll()
     } catch (err) {
       setError(err.message || 'Could not update grievance.')
-    }
-  }
-
-  /** Bounded, on-demand: only called when an admin clicks it for a specific cluster, never in bulk. Degrades to a "not configured" note if AI isn't set up. */
-  async function labelCluster(index, cluster) {
-    setClusterLabels((prev) => ({ ...prev, [index]: { loading: true } }))
-    try {
-      const res = await api.adminLabelCluster(adminKey, cluster.sampleMessage, cluster.size)
-      setClusterLabels((prev) => ({
-        ...prev,
-        [index]: res.aiEnabled
-          ? { label: res.label || 'Could not generate a label for this cluster.' }
-          : { disabled: true }
-      }))
-    } catch {
-      setClusterLabels((prev) => ({ ...prev, [index]: { error: true } }))
     }
   }
 
@@ -243,12 +222,6 @@ export default function AdminDashboard() {
         <div>
           <p className="eyebrow">Staff console</p>
           <h1>Admin Dashboard</h1>
-          {whoami && (
-            <p className="hint" style={{ marginTop: 2 }}>
-              Signed in as <strong>{whoami.name}</strong> ({whoami.role.replace('_', ' ')})
-              {whoami.role === 'AUDITOR' && ' — read-only'}
-            </p>
-          )}
         </div>
         <button className="btn-ghost" onClick={logout} style={{ padding: '8px 14px', fontSize: 12.5 }}>Sign out</button>
       </div>
@@ -324,17 +297,13 @@ export default function AdminDashboard() {
           )}
 
           <h3 className="modal-section-title">Admission Rate</h3>
-          {whoami && !whoami.canTuneQueue ? (
-            <p className="hint">Your role ({whoami.role.replace('_', ' ')}) can view this but not change it.</p>
-          ) : (
-            <form onSubmit={updateRate} style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
-              <div className="field" style={{ marginBottom: 0, flex: 1 }}>
-                <label>Admitted per tick (every 2s)</label>
-                <input type="number" min="1" value={rateInput} onChange={(e) => setRateInput(e.target.value)} />
-              </div>
-              <button className="btn" type="submit" style={{ width: 'auto', padding: '12px 20px' }}>Update</button>
-            </form>
-          )}
+          <form onSubmit={updateRate} style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
+            <div className="field" style={{ marginBottom: 0, flex: 1 }}>
+              <label>Admitted per tick (every 2s)</label>
+              <input type="number" min="1" value={rateInput} onChange={(e) => setRateInput(e.target.value)} />
+            </div>
+            <button className="btn" type="submit" style={{ width: 'auto', padding: '12px 20px' }}>Update</button>
+          </form>
 
           <h3 className="modal-section-title">Grievances</h3>
           <div className="faq-tabs">
@@ -357,16 +326,12 @@ export default function AdminDashboard() {
             <button className="btn-ghost" style={{ padding: '6px 12px', fontSize: 12 }} onClick={downloadCsv}>
               ⬇ Export CSV
             </button>
-            {whoami?.canManageGrievances && selected.size > 0 && STATUS_OPTIONS.filter((s) => s !== grievanceStatus).map((s) => (
+            {selected.size > 0 && STATUS_OPTIONS.filter((s) => s !== grievanceStatus).map((s) => (
               <button key={s} className="btn-ghost" style={{ padding: '6px 12px', fontSize: 12 }} onClick={() => bulkResolve(s)}>
                 Bulk mark {selected.size} as {s.replace('_', ' ')}
               </button>
             ))}
           </div>
-
-          {whoami && !whoami.canManageGrievances && (
-            <p className="hint">Your role ({whoami.role.replace('_', ' ')}) can view grievances but not change their status.</p>
-          )}
 
           {grievances.length === 0 && <p className="hint">No grievances with this status.</p>}
           <div className="kv-list">
@@ -374,23 +339,19 @@ export default function AdminDashboard() {
               <div className="kv-row" key={g.ticketRef} style={{ flexDirection: 'column', gap: 6, alignItems: 'stretch' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 800 }}>
-                    {whoami?.canManageGrievances && (
-                      <input type="checkbox" checked={selected.has(g.ticketRef)} onChange={() => toggleSelected(g.ticketRef)} />
-                    )}
+                    <input type="checkbox" checked={selected.has(g.ticketRef)} onChange={() => toggleSelected(g.ticketRef)} />
                     {g.ticketRef}
                   </label>
                   <span className="kv-k">{g.category}{g.languageHint && g.languageHint !== 'en' ? ` · lang: ${g.languageHint}` : ''}</span>
                 </div>
                 <GrievanceMessageDisplay grievance={g} />
-                {whoami?.canManageGrievances && (
-                  <div style={{ display: 'flex', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
-                    {STATUS_OPTIONS.filter((s) => s !== g.status).map((s) => (
-                      <button key={s} className="btn-ghost" style={{ padding: '6px 12px', fontSize: 12 }} onClick={() => resolveGrievance(g.ticketRef, s, g.category)}>
-                        Mark {s.replace('_', ' ')}
-                      </button>
-                    ))}
-                  </div>
-                )}
+                <div style={{ display: 'flex', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
+                  {STATUS_OPTIONS.filter((s) => s !== g.status).map((s) => (
+                    <button key={s} className="btn-ghost" style={{ padding: '6px 12px', fontSize: 12 }} onClick={() => resolveGrievance(g.ticketRef, s, g.category)}>
+                      Mark {s.replace('_', ' ')}
+                    </button>
+                  ))}
+                </div>
               </div>
             ))}
           </div>
@@ -401,24 +362,12 @@ export default function AdminDashboard() {
           </p>
           {clusters.length === 0 && <p className="hint">No repeated patterns detected right now.</p>}
           <div className="kv-list">
-            {clusters.map((c, i) => {
-              const labelState = clusterLabels[i]
-              return (
-                <div className="kv-row" key={i} style={{ flexDirection: 'column', gap: 4, alignItems: 'stretch' }}>
-                  <span className="kv-v" style={{ fontWeight: 800 }}>{c.size} similar tickets: {c.ticketRefs.join(', ')}</span>
-                  <span className="kv-v">"{c.sampleMessage}"</span>
-                  {!labelState && (
-                    <button className="btn-ghost" style={{ padding: '2px 8px', fontSize: 11, alignSelf: 'flex-start' }} onClick={() => labelCluster(i, c)}>
-                      Label with AI
-                    </button>
-                  )}
-                  {labelState?.loading && <span className="hint">Labeling…</span>}
-                  {labelState?.label && <span className="hint" style={{ fontWeight: 700 }}>AI label: {labelState.label}</span>}
-                  {labelState?.disabled && <span className="hint">AI assistant isn't configured on this deployment (set ANTHROPIC_API_KEY to enable).</span>}
-                  {labelState?.error && <span className="hint">Could not generate a label right now.</span>}
-                </div>
-              )
-            })}
+            {clusters.map((c, i) => (
+              <div className="kv-row" key={i} style={{ flexDirection: 'column', gap: 4, alignItems: 'stretch' }}>
+                <span className="kv-v" style={{ fontWeight: 800 }}>{c.size} similar tickets: {c.ticketRefs.join(', ')}</span>
+                <span className="kv-v">"{c.sampleMessage}"</span>
+              </div>
+            ))}
           </div>
 
           <h3 className="modal-section-title">FAQ Gaps</h3>

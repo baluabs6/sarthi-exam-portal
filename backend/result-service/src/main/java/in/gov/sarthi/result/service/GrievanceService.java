@@ -1,6 +1,5 @@
 package in.gov.sarthi.result.service;
 
-import in.gov.sarthi.result.config.RabbitMQConfig;
 import in.gov.sarthi.result.dto.GrievanceRequest;
 import in.gov.sarthi.result.dto.GrievanceResponse;
 import in.gov.sarthi.result.dto.GrievanceStatusUpdateRequest;
@@ -12,7 +11,6 @@ import in.gov.sarthi.result.util.LanguageHintDetector;
 import in.gov.sarthi.result.util.PiiMasker;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -20,7 +18,6 @@ import java.time.Duration;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -57,15 +54,13 @@ public class GrievanceService {
     private final GrievanceStatusHistoryRepository historyRepository;
     private final StringRedisTemplate redis;
     private final WebhookNotifier webhookNotifier;
-    private final RabbitTemplate rabbitTemplate;
 
     public GrievanceService(GrievanceRepository repository, GrievanceStatusHistoryRepository historyRepository,
-                             StringRedisTemplate redis, WebhookNotifier webhookNotifier, RabbitTemplate rabbitTemplate) {
+                             StringRedisTemplate redis, WebhookNotifier webhookNotifier) {
         this.repository = repository;
         this.historyRepository = historyRepository;
         this.redis = redis;
         this.webhookNotifier = webhookNotifier;
-        this.rabbitTemplate = rabbitTemplate;
     }
 
     public static class GrievanceNotFoundException extends RuntimeException {
@@ -233,25 +228,6 @@ public class GrievanceService {
 
         if (saved.getWebhookUrl() != null && !saved.getWebhookUrl().isBlank()) {
             webhookNotifier.notifyAsync(saved.getWebhookUrl(), saved.getTicketRef(), request.status());
-        }
-
-        // Real notification path for the common case (no webhookUrl
-        // needed) — only for the two terminal, candidate-actionable
-        // states. UNDER_REVIEW is a routine in-progress step most
-        // candidates don't need pushed to them; RESOLVED/REJECTED are
-        // the moments they're actually waiting for.
-        if (("RESOLVED".equals(request.status()) || "REJECTED".equals(request.status()))
-                && !request.status().equals(previousStatus)) {
-            rabbitTemplate.convertAndSend(
-                    RabbitMQConfig.EXCHANGE,
-                    RabbitMQConfig.GRIEVANCE_RESOLVED_ROUTING_KEY,
-                    Map.of(
-                            "rollNumber", saved.getRollNumber(),
-                            "ticketRef", saved.getTicketRef(),
-                            "examId", saved.getExamId(),
-                            "status", saved.getStatus()
-                    )
-            );
         }
 
         return GrievanceResponse.from(saved);

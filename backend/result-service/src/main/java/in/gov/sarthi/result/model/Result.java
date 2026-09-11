@@ -1,7 +1,5 @@
 package in.gov.sarthi.result.model;
 
-import in.gov.sarthi.result.security.FreeTextEncryptedConverter;
-import in.gov.sarthi.result.security.SearchableEncryptedConverter;
 import jakarta.persistence.*;
 
 import java.time.Instant;
@@ -16,23 +14,13 @@ public class Result {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // Deterministic encryption: findByRollNumber and the unique index both
-    // still work (same plaintext -> same ciphertext), but a raw DB dump no
-    // longer hands out a plaintext roll number. See PiiEncryptionService's
-    // class comment for the ECB/equality-leak tradeoff this makes — the
-    // same tradeoff already accepted for Grievance.rollNumber.
-    @Convert(converter = SearchableEncryptedConverter.class)
-    @Column(nullable = false, unique = true, columnDefinition = "TEXT")
+    @Column(nullable = false, unique = true)
     private String rollNumber;
 
     @Column(nullable = false)
     private String examId;
 
-    // Free-text (non-deterministic) encryption: name is never queried by
-    // exact match, so it gets the stronger, semantically-secure converter
-    // rather than the searchable one.
-    @Convert(converter = FreeTextEncryptedConverter.class)
-    @Column(nullable = false, columnDefinition = "TEXT")
+    @Column(nullable = false)
     private String name;
 
     @Column(nullable = false)

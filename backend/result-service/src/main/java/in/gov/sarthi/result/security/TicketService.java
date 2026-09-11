@@ -30,29 +30,8 @@ public class TicketService {
     private final SecretKey key;
 
     public TicketService(@Value("${ticket.signing-secret}") String signingSecret) {
-        this.key = Keys.hmacShaKeyFor(deriveKeyBytes(signingSecret));
-    }
-
-    /**
-     * Always derives a full 256-bit key via SHA-256, regardless of the
-     * raw secret's length, instead of the previous approach (use the raw
-     * bytes as-is if >= 32 bytes, otherwise repeat them to pad to 32).
-     * Byte-repetition padding for a short secret produces a key with
-     * much less real entropy than its length suggests (e.g. an 8-byte
-     * secret repeated 4x is still only 8 bytes of real randomness) —
-     * hashing removes that specific weakness. This does NOT make a
-     * genuinely weak/short secret strong (hashing a guessable secret
-     * still yields a guessable key) — TICKET_SIGNING_SECRET still needs
-     * real entropy (see .env.example); this just removes the additional,
-     * avoidable weakness the old padding scheme added on top of that.
-     */
-    private static byte[] deriveKeyBytes(String secret) {
-        try {
-            return java.security.MessageDigest.getInstance("SHA-256")
-                    .digest(secret.getBytes(StandardCharsets.UTF_8));
-        } catch (java.security.NoSuchAlgorithmException e) {
-            throw new IllegalStateException("Could not derive ticket signing key", e);
-        }
+        byte[] raw = signingSecret.getBytes(StandardCharsets.UTF_8);
+        this.key = Keys.hmacShaKeyFor(raw.length >= 32 ? raw : padTo32(raw));
     }
 
     /** Verified ticket claims, or empty if invalid/expired/tampered. */
@@ -78,6 +57,12 @@ public class TicketService {
     public Optional<String> verifyAndGetRollNumber(String ticket) {
         return verify(ticket).map(VerifiedTicket::rollNumber);
     }
+
+    private static byte[] padTo32(byte[] raw) {
+        byte[] padded = new byte[32];
+        for (int i = 0; i < 32; i++) {
+            padded[i] = raw[i % raw.length];
+        }
+        return padded;
+    }
 }
-
-

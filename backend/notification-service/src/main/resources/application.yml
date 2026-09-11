@@ -7,13 +7,13 @@ spring:
 
   data:
     mongodb:
-      uri: ${MONGODB_URI:mongodb://localhost:27017/sarthi_notifications}
+      uri: ${MONGODB_URI:*********************************************s}
 
   rabbitmq:
     host: ${RABBITMQ_HOST:localhost}
     port: ${RABBITMQ_PORT:5672}
-    username: ${RABBITMQ_USER:guest}
-    password: ${RABBITMQ_PASSWORD:guest}
+    username: ${RABBITMQ_USER:****t}
+    password: ${RABBITMQ_PASSWORD:****t}
     listener:
       simple:
         retry:

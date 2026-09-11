@@ -2,8 +2,6 @@ package in.gov.sarthi.queue.controller;
 
 import in.gov.sarthi.queue.model.AdminAuditEvent;
 import in.gov.sarthi.queue.model.AdminAuditRepository;
-import in.gov.sarthi.queue.security.AdminAccount;
-import in.gov.sarthi.queue.security.AdminAuthInterceptor;
 import in.gov.sarthi.queue.service.AuditAnomalyDetector;
 import in.gov.sarthi.queue.service.QueueManagerService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -36,33 +34,6 @@ public class AdminController {
         this.queueManagerService = queueManagerService;
         this.adminAuditRepository = adminAuditRepository;
         this.auditAnomalyDetector = auditAnomalyDetector;
-    }
-
-    /**
-     * Lets the admin dashboard know who's actually logged in and what
-     * they're allowed to do, instead of showing every admin an identical
-     * UI and letting them discover their role only when a write 403s.
-     * Both queue-service and result-service validate the same
-     * ADMIN_ACCOUNTS_JSON (see .env), so a single call here accurately
-     * reflects permissions on both — as long as that env var is kept in
-     * sync across the two services, which docker-compose.yml and the
-     * Terraform in infra/ both already do by construction (one shared
-     * value, not two independently-set ones).
-     */
-    @GetMapping("/whoami")
-    public ResponseEntity<Map<String, Object>> whoami(HttpServletRequest request) {
-        AdminAccount account = (AdminAccount) request.getAttribute(AdminAuthInterceptor.REQUEST_ATTR_ACCOUNT);
-        return ResponseEntity.ok(Map.of(
-                "name", account.name(),
-                "role", account.role().name(),
-                // Mirrors the two interceptors' actual enforcement exactly,
-                // rather than the frontend guessing/duplicating the rule —
-                // if the rule ever changes here or in result-service's
-                // interceptor, this is the one place the frontend needs
-                // to reflect it correctly.
-                "canTuneQueue", account.role() == AdminAccount.AdminRole.SUPER_ADMIN || account.role() == AdminAccount.AdminRole.QUEUE_OPERATOR,
-                "canManageGrievances", account.role() == AdminAccount.AdminRole.SUPER_ADMIN
-        ));
     }
 
     @GetMapping("/queues")

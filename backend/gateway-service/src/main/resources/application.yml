@@ -11,32 +11,10 @@ spring:
 
   cloud:
     gateway:
-      # SECURITY: X-Forwarded-For is read by every downstream service
-      # (queue-service's lockout tracker, result-service's CAPTCHA
-      # difficulty, assistant-service's rate limiter, audit logging) to
-      # identify the real client IP. The actual trust boundary is
-      # frontend/nginx.conf, the internet-facing edge — it now overwrites
-      # X-Forwarded-For with $remote_addr (its own unforgeable view of
-      # the connecting client) instead of blindly appending to whatever
-      # the client sent. Gateway sits BEHIND nginx in the normal request
-      # path, so it should trust and forward that already-correct value
-      # rather than discard it — Spring's default for-append behavior
-      # appends gateway's own hop (nginx's container IP) after it, and
-      # downstream code correctly reads the FIRST entry, which is the
-      # real client IP nginx recorded. (If a request skips nginx entirely
-      # by hitting gateway's port directly — see the docker-compose.yml
-      # comment on why that port is exposed only for local dev — this
-      # protection doesn't apply, which is exactly why that port must not
-      # be internet-facing in a real deployment; see infra/terraform,
-      # where only the frontend is ever the external origin.)
-      x-forwarded:
-        for-enabled: true
-        for-append: true
-
       routes:
         # REST calls to join / poll the virtual waiting room
         - id: queue-service
-          uri: ${QUEUE_SERVICE_URL:http://localhost:8081}
+          uri: ${QUEUE_SERVICE_URL:********************1}
           predicates:
             - Path=/api/queue/**
           filters:
@@ -48,13 +26,13 @@ spring:
 
         # Live queue position updates over WebSocket/SockJS
         - id: queue-websocket
-          uri: ${QUEUE_SERVICE_WS_URL:ws://localhost:8081}
+          uri: ${QUEUE_SERVICE_WS_URL:******************1}
           predicates:
             - Path=/ws/**
 
         # Result lookups, once a user has been admitted from the queue
         - id: result-service
-          uri: ${RESULT_SERVICE_URL:http://localhost:8082}
+          uri: ${RESULT_SERVICE_URL:********************2}
           predicates:
             - Path=/api/results/**
           filters:
@@ -67,7 +45,7 @@ spring:
         # Grievance ticketing (raise/track) — lives in result-service,
         # alongside the results data it references.
         - id: grievance-service
-          uri: ${RESULT_SERVICE_URL:http://localhost:8082}
+          uri: ${RESULT_SERVICE_URL:********************2}
           predicates:
             - Path=/api/grievances/**
           filters:
@@ -79,7 +57,7 @@ spring:
 
         # Admit card / hall ticket PDF — same ticket gate as result lookup.
         - id: admit-card
-          uri: ${RESULT_SERVICE_URL:http://localhost:8082}
+          uri: ${RESULT_SERVICE_URL:********************2}
           predicates:
             - Path=/api/admit-card/**
           filters:
@@ -91,7 +69,7 @@ spring:
 
         # Application status timeline — public reads, admin-gated advance.
         - id: application-status
-          uri: ${RESULT_SERVICE_URL:http://localhost:8082}
+          uri: ${RESULT_SERVICE_URL:********************2}
           predicates:
             - Path=/api/applications/**
           filters:
@@ -105,7 +83,7 @@ spring:
         # itself (AdminAuthInterceptor), but still rate-limited here so a
         # leaked/guessed key can't be used to hammer the service.
         - id: queue-admin
-          uri: ${QUEUE_SERVICE_URL:http://localhost:8081}
+          uri: ${QUEUE_SERVICE_URL:********************1}
           predicates:
             - Path=/api/admin/**
           filters:
@@ -120,7 +98,7 @@ spring:
         # loosely than the admin surface (legitimate bulk calls are
         # expected) but still bounded.
         - id: partner-api
-          uri: ${RESULT_SERVICE_URL:http://localhost:8082}
+          uri: ${RESULT_SERVICE_URL:********************2}
           predicates:
             - Path=/api/partner/**
           filters:
@@ -133,31 +111,14 @@ spring:
         # Public status page — deliberately NOT rate limited, so users can
         # always see system health even during a total overload.
         - id: status
-          uri: ${QUEUE_SERVICE_URL:http://localhost:8081}
+          uri: ${QUEUE_SERVICE_URL:********************1}
           predicates:
             - Path=/api/status/**
-
-        # AI assistant (FAQ RAG chat + admin cluster labeling). Rate
-        # limited far tighter than everything else here — each request
-        # can trigger a real, metered call to an LLM provider, unlike
-        # every other route in this file. The service itself no-ops
-        # gracefully if ANTHROPIC_API_KEY isn't set, so this route is
-        # always safe to leave enabled.
-        - id: assistant-service
-          uri: ${ASSISTANT_SERVICE_URL:http://localhost:8084}
-          predicates:
-            - Path=/api/assistant/**
-          filters:
-            - name: RequestRateLimiter
-              args:
-                redis-rate-limiter.replenishRate: 2
-                redis-rate-limiter.burstCapacity: 5
-                key-resolver: "#{@ipKeyResolver}"
 
 # CORS allowlist — must match wherever the frontend is actually served
 # from. Comma-separated for multiple environments.
 security:
-  allowed-origins: ${ALLOWED_ORIGINS:http://localhost:3000}
+  allowed-origins: ${ALLOWED_ORIGINS:********************0}
 
 management:
   endpoints:
